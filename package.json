@@ -1,0 +1,27 @@
+{
+  "name": "@webship/workspace-ide",
+  "version": "1.0.0",
+  "description": "The Web IDE for Webship Workspace: the IDE menu on every project row and files page (VS Code in the browser, served by the dashboard, or an editor on your own machine), the Edit-in-the-Web-IDE link inside other menus, and the probe that says when the IDE daemon is down.",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "private": true,
+  "license": "ISC",
+  "repository": "github:webship/workspace-ide",
+  "files": ["dist/src", "features", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "workspacePlugin": {
+    "name": "ide",
+    "label": "Web IDE",
+    "features": ["features/ide.feature"]
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@webship/workspace-plugin-api": "github:webship/workspace-plugin-api#1.0.x",
+    "typescript": "^5.9.0"
+  }
+}
