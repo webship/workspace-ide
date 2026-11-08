@@ -13,7 +13,7 @@
  */
 
 import net from 'net';
-import type { PluginApi, RowContext } from '@webship/workspace-plugin-api';
+import type { PluginApi, RowContext } from '@webship.co/workspace-plugin-api';
 
 /** Where code-server binds inside the container; the dashboard's nginx vhost proxies ide.<hub> to it. */
 export const IDE_BIND = { host: '127.0.0.1', port: 8443 };

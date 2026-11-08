@@ -1,4 +1,4 @@
-# @webship/workspace-ide
+# @webship.co/workspace-ide
 
 The Web IDE for the [Webship Workspace](https://github.com/webship/workspace) dashboard: the **IDE**
 menu on every project row and files page — VS Code in the browser (code-server, a daemon in the

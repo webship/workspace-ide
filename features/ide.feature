@@ -10,4 +10,4 @@ Feature: The Web IDE plugin
   Scenario: The plugin is listed on the Plugins page
     Given I am on "/settings/plugins"
      Then I should see "Web IDE"
-      And I should see "@webship/workspace-ide"
+      And I should see "@webship.co/workspace-ide"
