@@ -1,6 +1,6 @@
 {
   "name": "@webship.co/workspace-ide",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The Web IDE for Webship Workspace: the IDE menu on every project row and files page (VS Code in the browser, served by the dashboard, or an editor on your own machine), the Edit-in-the-Web-IDE link inside other menus, and the probe that says when the IDE daemon is down.",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
