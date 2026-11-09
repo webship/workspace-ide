@@ -12,8 +12,9 @@
  * beside it is fine, so a cached TCP probe decides whether the item is a link or the reason.
  */
 
+import fs from 'fs';
 import net from 'net';
-import type { PluginApi, RowContext } from '@webship.co/workspace-plugin-api';
+import type { FragmentContext, PluginApi, RowContext } from '@webship.co/workspace-plugin-api';
 
 /** Where code-server binds inside the container; the dashboard's nginx vhost proxies ide.<hub> to it. */
 export const IDE_BIND = { host: '127.0.0.1', port: 8443 };
@@ -39,12 +40,13 @@ export function makeIdeProbe(bind = IDE_BIND, ttl = IDE_TTL) {
 }
 
 export function register(api: PluginApi): void {
-  const { esc, hubDomain, tildePath, hasOwnGit, gitWorktreeInfo } = api.lib as any;
+  const { esc, hubDomain, tildePath, hasOwnGit, gitWorktreeInfo, workspaceDir, NAME_RE } = api.lib as any;
   const ideUp = makeIdeProbe();
   const ideBaseUrl = () => `https://ide.${hubDomain()}`;
   const ideUrl = (abs: string) => `${ideBaseUrl()}/?folder=${encodeURIComponent(abs)}`;
 
-  function openWithMenuHtml(abs: string, { label = 'IDE', caption = 'code', git = null }: { label?: string; caption?: string; git?: any } = {}): string {
+  /** The menu's items for one folder: where each editor runs, with what git says about the folder on top. */
+  function openWithItemsHtml(abs: string, git: any = null): string {
     // What git says about the folder belongs INSIDE the menu, not in the caption: the caption is a
     // one-word status and a branch name is neither short nor stable.
     const gitHead = (git && git.role !== 'none') ? `
@@ -54,10 +56,7 @@ export function register(api: PluginApi): void {
       ${git.role === 'linked' ? `<li data-entry="worktree of"><span class="uk-text-meta">of <code>${esc(tildePath(git.primary))}</code></span></li>` : ''}
       ${git.role === 'primary' ? `<li data-entry="worktrees"><span class="uk-text-meta">${git.others.length} worktree(s) live off this checkout</span></li>` : ''}
       <li class="uk-nav-divider"></li>` : '';
-    return `<span class="act-with-status"><div class="uk-inline act-menu act-menu-ide">
-    <button class="uk-button uk-button-default uk-button-small" type="button"
-      title="Open this in the browser IDE, or hand it to an editor on your own machine"><span uk-icon="icon: code; ratio: .7"></span> ${esc(label)} <span uk-icon="icon: chevron-down; ratio: .6"></span></button>
-    <div uk-dropdown="mode: click; pos: bottom-right"><ul class="uk-nav uk-dropdown-nav">
+    return `<ul class="uk-nav uk-dropdown-nav">
       ${gitHead}
       <li class="uk-nav-header">Here, in the browser</li>
       ${ideUp()
@@ -73,7 +72,17 @@ export function register(api: PluginApi): void {
       <li class="uk-nav-divider"></li>
       <li><a href="#" class="copy-cmd" data-copy="${esc(abs)}"
              title="Copy the path — for: code ${esc(abs)}  ·  idea ${esc(abs)}  (a terminal needs no URL handler)"><span uk-icon="icon: copy; ratio: .7"></span> Copy the path</a></li>
-    </ul></div>
+    </ul>`;
+  }
+
+  const ideButton = (label: string) => `<button class="uk-button uk-button-default uk-button-small" type="button"
+      title="Open this in the browser IDE, or hand it to an editor on your own machine"><span uk-icon="icon: code; ratio: .7"></span> ${esc(label)} <span uk-icon="icon: chevron-down; ratio: .6"></span></button>`;
+
+  /** The whole menu, inline: the button, the items and the caption. */
+  function openWithMenuHtml(abs: string, { label = 'IDE', caption = 'code', git = null }: { label?: string; caption?: string; git?: any } = {}): string {
+    return `<span class="act-with-status"><div class="uk-inline act-menu act-menu-ide">
+    ${ideButton(label)}
+    <div uk-dropdown="mode: click; pos: bottom-right">${openWithItemsHtml(abs, git)}</div>
   </div><span class="act-status uk-text-meta">${esc(caption)}</span></span>`;
   }
 
@@ -84,10 +93,33 @@ export function register(api: PluginApi): void {
 
   // The IDE slot on a project row. The caption says only WHETHER there is a repository (that decides
   // whether the clone form can offer a worktree); the branch is in the menu.
-  api.addRowMenu('ide', { label: 'IDE', row: 0 }, ({ project, dir }: RowContext) => {
+  const fragment = (rest: string) => `/fragments/p/${api.name}/${rest}`;
+  // A dashboard since 1.0.0-rc2 fetches a row menu's body when the menu opens (`row-menu-body`): the
+  // page carries the button and the caption, and the fragment below answers the items for that one
+  // folder — so fifty rows cost fifty buttons and no git process. An older dashboard gets the menu inline.
+  const lazy = !!(api.capabilities && api.capabilities.has('row-menu-body'));
+  /** `.git` as a file links a worktree to its checkout; as a directory it is the checkout. One stat, no git. */
+  const gitRoleOf = (abs: string): 'none' | 'linked' | 'checkout' => {
+    try { return fs.statSync(`${abs}/.git`).isFile() ? 'linked' : 'checkout'; } catch (_) { return 'none'; }
+  };
+  const ideCaption = (role: string) => (role === 'none' ? 'code' : (role === 'linked' ? 'code · worktree' : 'code · git'));
+  const noneGit = { role: 'none', branch: '', others: [], primary: '', unpushed: 0, dirty: 0 };
+
+  api.addRowMenu('ide', { label: 'IDE', row: 0 }, ({ key, project, dir }: RowContext) => {
     const projectPath = `${dir}/${project}`;
-    const g = hasOwnGit(projectPath) ? gitWorktreeInfo(projectPath) : { role: 'none', branch: '', others: [], primary: '', unpushed: 0, dirty: 0 };
-    const caption = g.role === 'none' ? 'code' : (g.role === 'linked' ? 'code · worktree' : 'code · git');
-    return openWithMenuHtml(projectPath, { caption, git: g });
+    if (lazy) return { html: ideButton('IDE'), body: fragment(`menu/${encodeURIComponent(key)}/${encodeURIComponent(project)}`), caption: ideCaption(gitRoleOf(projectPath)) };
+    const g = hasOwnGit(projectPath) ? gitWorktreeInfo(projectPath) : noneGit;
+    return openWithMenuHtml(projectPath, { caption: ideCaption(g.role === 'linked' ? 'linked' : g.role), git: g });
+  });
+
+  // The row menu's body, asked for as the menu opens.
+  api.addFragment(({ send, rest }: FragmentContext) => {
+    const m = /^menu\/([a-z0-9_-]+)\/([a-zA-Z0-9_-]+)$/.exec(rest);
+    if (!m || !NAME_RE.test(m[2])) return send('<ul class="uk-nav uk-dropdown-nav"><li class="uk-nav-header">No such menu.</li></ul>', 404);
+    const projectPath = `${workspaceDir(m[1])}/${m[2]}`;
+    let folder = false;
+    try { folder = fs.statSync(projectPath).isDirectory(); } catch (_) { /* answered below */ }
+    if (!folder) return send('<ul class="uk-nav uk-dropdown-nav"><li class="uk-nav-header">No such project.</li></ul>', 404);
+    return send(openWithItemsHtml(projectPath, hasOwnGit(projectPath) ? gitWorktreeInfo(projectPath) : null));
   });
 }
