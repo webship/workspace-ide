@@ -1,11 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import net from 'net';
 
 import { register, makeIdeProbe, IDE_BIND } from '../src/index';
 
 function fakeApi() {
-  const calls: any = { rowMenus: {}, openWith: [], links: [] };
+  const calls: any = { rowMenus: {}, openWith: [], links: [], fragments: [] };
   const api: any = {
     name: 'ide',
     lib: {
@@ -17,6 +20,7 @@ function fakeApi() {
     addRowMenu: (slot: string, spec: any, fn: any) => { calls.rowMenus[slot] = { spec, fn }; },
     addOpenWith: (fn: any) => calls.openWith.push(fn),
     addFolderLink: (fn: any) => calls.links.push(fn),
+    addFragment: (fn: any) => calls.fragments.push(fn),
   };
   return { api, calls };
 }
@@ -73,4 +77,38 @@ test('the probe answers "up" before it knows, then the truth, and the folder lin
   register(api);
   const link = calls.links[0]('/w/dev/site1');
   assert.ok(link === null || /Edit in the Web IDE/.test(link.label));
+});
+
+test('on a dashboard that fetches menu bodies, the row costs a button and one stat, and the fragment serves the items', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ide-plugin-'));
+  fs.mkdirSync(path.join(root, 'dev/checkout/.git'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'dev/worktree'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'dev/worktree/.git'), 'gitdir: /elsewhere\n');
+  fs.mkdirSync(path.join(root, 'dev/plain'), { recursive: true });
+  const { api, calls } = fakeApi();
+  api.capabilities = new Set(['row-menu-body']);
+  api.lib.workspaceDir = (ws: string) => path.join(root, ws);
+  api.lib.NAME_RE = /^[a-zA-Z0-9_-]+$/;
+  api.lib.hasOwnGit = (dir: string) => fs.existsSync(path.join(dir, '.git'));
+  register(api);
+  const ctx = (project: string) => ({ key: 'dev', project, dir: path.join(root, 'dev'), meta: {}, allowed: new Set(), vals: () => '' });
+  const checkout = calls.rowMenus.ide.fn(ctx('checkout'));
+  assert.strictEqual(checkout.body, '/fragments/p/ide/menu/dev/checkout');
+  assert.strictEqual(checkout.caption, 'code · git');
+  assert.match(checkout.html, /> IDE </);
+  assert.doesNotMatch(checkout.html, /uk-dropdown|vscode:\/\//, 'the page carries the button alone');
+  assert.strictEqual(calls.rowMenus.ide.fn(ctx('worktree')).caption, 'code · worktree');
+  assert.strictEqual(calls.rowMenus.ide.fn(ctx('plain')).caption, 'code');
+  let out = { html: '', status: 200 };
+  const send = (html: string, status = 200) => { out = { html, status }; };
+  calls.fragments[0]({ send, rest: 'menu/dev/checkout' });
+  assert.strictEqual(out.status, 200);
+  assert.match(out.html, /^<ul class="uk-nav uk-dropdown-nav">/);
+  assert.match(out.html, /Git worktree/, 'the fake git says linked: the facts are in the body');
+  assert.match(out.html, new RegExp(`vscode://file${path.join(root, 'dev/checkout')}`));
+  calls.fragments[0]({ send, rest: 'menu/dev/plain' });
+  assert.doesNotMatch(out.html, /uk-nav-header">Git/);
+  calls.fragments[0]({ send, rest: 'menu/dev/missing' });
+  assert.strictEqual(out.status, 404);
+  fs.rmSync(root, { recursive: true, force: true });
 });
