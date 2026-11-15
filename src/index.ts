@@ -39,6 +39,12 @@ export function makeIdeProbe(bind = IDE_BIND, ttl = IDE_TTL) {
   };
 }
 
+/** The AI items the installer places: agents in ai-agents/, skills in ai-skills/, commands in ai-commands/, prompts in ai-prompts/. */
+export const AGENTS: string[] = [];
+export const SKILLS: string[] = ['ide-open-with'];
+export const AI_COMMANDS: string[] = ['ide-links'];
+export const PROMPTS: string[] = ['ide-web-ide-check'];
+
 export function register(api: PluginApi): void {
   const { esc, hubDomain, tildePath, hasOwnGit, gitWorktreeInfo, workspaceDir, NAME_RE } = api.lib as any;
   const ideUp = makeIdeProbe();
