@@ -66,7 +66,8 @@ test('the manifest carries a list per kind it ships, each item under ai/<kind>/,
   assert.strictEqual(new Set([...AI_COMMANDS, ...PROMPTS]).size, AI_COMMANDS.length + PROMPTS.length, 'no command and prompt share a name');
 });
 
-test('an agent is named after its file, says when to use it, and names its model and tools', () => {
+// This plugin ships no agent (the first test holds that): the agent test says so as a skip, not as a pass.
+test('an agent is named after its file, says when to use it, and names its model and tools', { skip: kindList('agents').length ? false : 'this plugin ships no agent' }, () => {
   for (const f of kindList('agents')) {
     const head = frontmatter(read(f));
     assert.match(head, new RegExp(`^name: ${path.basename(f, '.md')}$`, 'm'));
